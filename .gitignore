@@ -369,6 +369,15 @@ docs/source/api
 .pybuilder/
 target/
 
+# Wandb runs
+wandb/
+
+# Checkpoints
+checkpoints/
+
+# Plots
+plots/
+
 # Jupyter Notebook
 
 # IPython
