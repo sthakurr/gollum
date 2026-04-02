@@ -1,6 +1,7 @@
 import warnings
 from botorch.exceptions import InputDataWarning
 
+import os
 import re
 import torch
 import logging
@@ -83,7 +84,9 @@ MODEL_EMBEDDING_SIZES = {
     "text-embedding-3-large": 3072,
     "nomic-ai/modernbert-embed-base;get_huggingface_embeddings;normalize:False;pooling:cls": 768,
     "Qwen/Qwen2-7B-Instruct;get_huggingface_embeddings;normalize:False;pooling:last_token": 3584,
-    "GT4SD/multitask-text-and-chemistry-t5-base-augm": 768, 
+    "GT4SD/multitask-text-and-chemistry-t5-base-augm": 768,
+    "facebook/esm2_t33_650M_UR50D": 1280,
+    "Rostlab/prot_t5_xl_uniref50": 1024,
 }
 
 
@@ -107,7 +110,8 @@ def configure_pooling_method(config, model_name):
         "GT4SD/multitask-text-and-chemistry-t5-base-augm-from-rxn": "average",
         "t5-base": "average",
         "Qwen/Qwen2-7B-Instruct": "last_token_pool",
-      
+        "facebook/esm2_t33_650M_UR50D": "average",
+        "Rostlab/prot_t5_xl_uniref50": "average",
     }
 
     if model_name in hugging_face_models:
@@ -212,8 +216,12 @@ def train(config):
     config = validate_configuration(config)
     wandb_config = flatten(config)
     
+    model_name = config["data"]["init_args"]["featurizer"]["init_args"]["model_name"]
+    model_short = model_name.split("/")[-1]
+    run_name = f"{model_short}_seed{config['seed']}"
+
     with wandb.init(
-        project="gollum", config=wandb_config, group=config["group"]
+        project="gollum", config=wandb_config, group=config["group"], name=run_name
     ) as run:
 
         dm = setup_data(config)
@@ -286,6 +294,39 @@ def train(config):
             assert total_indices == len(dm.x), "Mismatch in the total number of indices"
 
         log_bo_metrics(data_stats, dm.train_y, epoch=config["n_iters"])
+
+        # Save finetuned model if using DeepGP
+        if config["surrogate_model"]["class_path"] == "gollum.surrogate_models.gp.DeepGP":
+            model_save_path = os.path.join(
+                "checkpoints", run.name if run else "default", "finetuned_model.pt"
+            )
+            os.makedirs(os.path.dirname(model_save_path), exist_ok=True)
+            torch.save(
+                bo.surrogate_model.finetuning_model.state_dict(), model_save_path
+            )
+            print(f"Saved finetuned model to {model_save_path}")
+
+            # Visualize embeddings if requested
+            if config.get("visualize", False) and config.get("full_data_path"):
+                from gollum.visualization import visualize_embeddings
+
+                ft_config = config["surrogate_model"]["init_args"]["finetuning_model"]["init_args"]
+                model_name = ft_config["model_name"]
+                pooling_method = ft_config["pooling_method"]
+
+                output_dir = os.path.join(
+                    "plots", "embeddings", run.name if run else "default"
+                )
+                visualize_embeddings(
+                    full_data_path=config["full_data_path"],
+                    model_name=model_name,
+                    pooling_method=pooling_method,
+                    model_state_path=model_save_path,
+                    finetuning_model_config=ft_config,
+                    output_dir=output_dir,
+                    random_state=config.get("seed", 42),
+                )
+
         logger.setLevel(logging.INFO)
         wandb.finish()
 
@@ -307,7 +348,8 @@ def main():
     parser.add_argument("--n_iters", type=int, help="How many iterations to run")
    
     parser.add_argument("--group", type=str, help="Wandb group runs")
-    
+    parser.add_argument("--visualize", type=bool, default=False, help="Visualize embeddings after training")
+    parser.add_argument("--full_data_path", type=str, default=None, help="Path to full dataset with split labels (for visualization)")
 
     parser.add_subclass_arguments(BaseDataModule, "data", instantiate=False)
     parser.add_subclass_arguments(SurrogateModel, "surrogate_model", instantiate=False)

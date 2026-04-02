@@ -25,6 +25,11 @@ def get_target_layers(model, proportion=0.25, from_top=True):
             if len(parts) > 1:
                 num = parts[1].split(".")[0]
                 return int(num) if num.isdigit() else None
+        elif "layer." in name:  # ESM style (encoder.layer.X)
+            parts = name.split("layer.")
+            if len(parts) > 1:
+                num = parts[1].split(".")[0]
+                return int(num) if num.isdigit() else None
         return None
 
     # First pass: collect all layer numbers

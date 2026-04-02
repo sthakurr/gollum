@@ -39,7 +39,7 @@ class Featurizer:
         """
         from gollum.featurization.molecular import fingerprints, fragments, mqn_features, chemberta_features
         from gollum.featurization.text import get_tokens, get_huggingface_embeddings, instructor_embeddings
-        from gollum.featurization.reaction import rxnfp, drfp, one_hot
+        # from gollum.featurization.reaction import rxnfp, drfp, one_hot
         from gollum.featurization.general import precalculated, all_continuous
         
         return {
@@ -47,9 +47,6 @@ class Featurizer:
             "fragments": fragments,
             "mqn_features": mqn_features,
             "chemberta_features": chemberta_features,
-            "ohe": one_hot,
-            "rxnfp": rxnfp,
-            "drfp": drfp,
             "get_huggingface_embeddings": get_huggingface_embeddings,
             "get_tokens": get_tokens,
             "instructor_embeddings": instructor_embeddings,

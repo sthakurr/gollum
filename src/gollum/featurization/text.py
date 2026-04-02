@@ -24,9 +24,9 @@ import torch.nn.functional as F
 from sentence_transformers import SentenceTransformer
 from InstructorEmbedding import INSTRUCTOR
 
-from openai import OpenAI
+# from openai import OpenAI
 
-client = OpenAI()
+# client = OpenAI()
 
 from transformers import AutoTokenizer
 from gollum.featurization.utils.pooling import average_pool, last_token_pool, weighted_average_pool
@@ -92,6 +92,11 @@ MODEL_CONFIGS = {
         T5Config,
         T5EncoderModel,
     ),
+    "Rostlab/prot_t5_xl_uniref50": ModelConfig(
+        "Rostlab/prot_t5_xl_uniref50",
+        T5Config,
+        T5EncoderModel,
+    ),
     "McGill-NLP/LLM2Vec-Meta-Llama-3-8B-Instruct-mntp": ModelConfig(
         "McGill-NLP/LLM2Vec-Meta-Llama-3-8B-Instruct-mntp",
         LlamaConfig,
@@ -103,16 +108,18 @@ MODEL_CONFIGS = {
 
 def get_model_and_tokenizer(model_name: str, device: str='cuda'):
 
-    tokenizer = AutoTokenizer.from_pretrained(
-        model_name, trust_remote_code=True
-    )
+    if "prot_t5" in model_name.lower():
+        tokenizer = T5Tokenizer.from_pretrained(model_name, do_lower_case=False, legacy=True)
+    else:
+        tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
     tokenizer.pad_token = tokenizer.pad_token or tokenizer.eos_token
 
     if model_config := MODEL_CONFIGS.get(model_name):
         config = model_config.config_class.from_pretrained(model_name)
         setattr(config, model_config.dropout_field, 0)
+        torch_dtype = torch.bfloat16 if "prot_t5" in model_name.lower() else torch.float32
         model = model_config.model_class.from_pretrained(
-            model_name, config=config
+            model_name, config=config, torch_dtype=torch_dtype
         ).to(device)
     else:
         model = AutoModel.from_pretrained(
@@ -129,7 +136,12 @@ def get_tokens(
     device="cuda" if torch.cuda.is_available() else "cpu",
 ):
     print(model_name, "for get tokens")
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    if "prot_t5" in model_name.lower():
+        tokenizer = T5Tokenizer.from_pretrained(model_name, do_lower_case=False, legacy=True)
+        # ProtT5 requires space-separated amino acids
+        texts = [" ".join(list(seq)) for seq in texts]
+    else:
+        tokenizer = AutoTokenizer.from_pretrained(model_name)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
@@ -175,6 +187,10 @@ def get_huggingface_embeddings(
     model, tokenizer = get_model_and_tokenizer(model_name, device)
     left_padding = tokenizer.padding_side == "left"
     model.eval()
+
+    # ProtT5 requires space-separated amino acids
+    if "prot_t5" in model_name.lower():
+        texts = [" ".join(list(seq)) for seq in texts]
 
     # optionally add prefix to each text
     if prefix:
