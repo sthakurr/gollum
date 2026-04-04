@@ -1,0 +1,60 @@
+[
+  {
+    "branch": "main",
+    "commit_sha": "cddb852",
+    "gpu": "NVIDIA RTX A6000",
+    "timestamp": "2026-04-03T12:38:15",
+    "n": 50,
+    "n_repeats": 2,
+    "outcomes": [
+      "success",
+      "success"
+    ],
+    "success_rate": 1.0
+  },
+  {
+    "branch": "main",
+    "commit_sha": "cddb852",
+    "gpu": "NVIDIA RTX A6000",
+    "timestamp": "2026-04-03T12:38:35",
+    "n": 100,
+    "n_repeats": 2,
+    "outcomes": [
+      "success",
+      "success"
+    ],
+    "success_rate": 1.0
+  },
+  {
+    "branch": "main",
+    "commit_sha": "cddb852",
+    "gpu": "NVIDIA RTX A6000",
+    "timestamp": "2026-04-03T12:38:56",
+    "n": 200,
+    "n_repeats": 2,
+    "outcomes": [
+      "success",
+      "success"
+    ],
+    "success_rate": 1.0
+  },
+  {
+    "branch": "main",
+    "commit_sha": "cddb852",
+    "gpu": "NVIDIA RTX A6000",
+    "timestamp": "2026-04-03T12:39:19",
+    "n": 400,
+    "n_repeats": 2,
+    "outcomes": [
+      "success",
+      "success"
+    ],
+    "success_rate": 1.0
+  },
+  {
+    "branch": "main",
+    "commit_sha": "cddb852",
+    "oom_threshold_n": 400,
+    "summary": true
+  }
+]

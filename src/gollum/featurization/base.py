@@ -39,23 +39,30 @@ class Featurizer:
         """
         from gollum.featurization.molecular import fingerprints, fragments, mqn_features, chemberta_features
         from gollum.featurization.text import get_tokens, get_huggingface_embeddings, instructor_embeddings
-        from gollum.featurization.reaction import rxnfp, drfp, one_hot
         from gollum.featurization.general import precalculated, all_continuous
-        
-        return {
+
+        registry = {
             "fingerprints": fingerprints,
             "fragments": fragments,
             "mqn_features": mqn_features,
             "chemberta_features": chemberta_features,
-            "ohe": one_hot,
-            "rxnfp": rxnfp,
-            "drfp": drfp,
             "get_huggingface_embeddings": get_huggingface_embeddings,
             "get_tokens": get_tokens,
             "instructor_embeddings": instructor_embeddings,
             "precalculated": precalculated,
             "all_continuous": all_continuous,
         }
+
+        # Reaction featurizers are optional (rxnfp may not be installed)
+        try:
+            from gollum.featurization.reaction import rxnfp, drfp, one_hot
+            registry["rxnfp"] = rxnfp
+            registry["drfp"] = drfp
+            registry["ohe"] = one_hot
+        except ImportError:
+            pass
+
+        return registry
     
     @property
     def output_dim(self) -> int:
@@ -90,7 +97,7 @@ class Featurizer:
         
         import inspect
         sig = inspect.signature(featurize_func)
-        valid_params = {k: v for k, v in self.params.items() if k in sig.parameters}
+        valid_params = {k: v for k, v in self.params.items() if k in sig.parameters and v is not None}
         
         features = featurize_func(data_list, **valid_params)
         

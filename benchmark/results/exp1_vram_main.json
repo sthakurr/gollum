@@ -1,0 +1,32 @@
+[
+  {
+    "branch": "main",
+    "commit_sha": "cddb852",
+    "gpu": "NVIDIA RTX A6000",
+    "timestamp": "2026-04-03T15:24:42",
+    "config": "DeepGP_t5base",
+    "seed": 1,
+    "error": null,
+    "peak_vram_mb": 1323.5
+  },
+  {
+    "branch": "main",
+    "commit_sha": "cddb852",
+    "gpu": "NVIDIA RTX A6000",
+    "timestamp": "2026-04-03T15:31:50",
+    "config": "DeepGP_t5base",
+    "seed": 2,
+    "error": null,
+    "peak_vram_mb": 1323.5
+  },
+  {
+    "branch": "main",
+    "commit_sha": "cddb852",
+    "gpu": "NVIDIA RTX A6000",
+    "timestamp": "2026-04-03T15:39:14",
+    "config": "DeepGP_t5base",
+    "seed": 3,
+    "error": null,
+    "peak_vram_mb": 1323.5
+  }
+]

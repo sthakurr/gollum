@@ -26,7 +26,14 @@ from InstructorEmbedding import INSTRUCTOR
 
 from openai import OpenAI
 
-client = OpenAI()
+# Lazy singleton — avoids crashing on import when OPENAI_API_KEY is not set
+_openai_client = None
+
+def _get_openai_client():
+    global _openai_client
+    if _openai_client is None:
+        _openai_client = OpenAI()
+    return _openai_client
 
 from transformers import AutoTokenizer
 from gollum.featurization.utils.pooling import average_pool, last_token_pool, weighted_average_pool
@@ -39,7 +46,7 @@ from gollum.featurization.utils.pooling import average_pool, last_token_pool, we
 def get_embedding(text, model="text-embedding-3-large"):
     text = text.replace("\n", " ")
     return (
-        client.embeddings.create(input=[text], model=model).data[0].embedding
+        _get_openai_client().embeddings.create(input=[text], model=model).data[0].embedding
     )
 
 
@@ -55,7 +62,9 @@ def ada_embeddings(texts, model="text-embedding-ada-002"):
     """
     get_embedding_with_model = partial(get_embedding, model=model)
 
-    with ProcessPoolExecutor() as executor:
+    # Cap workers to avoid spawning N processes for N texts (2D fix)
+    n_workers = min(8, max(1, len(texts)))
+    with ProcessPoolExecutor(max_workers=n_workers) as executor:
         embeddings = list(
             tqdm(
                 executor.map(get_embedding_with_model, texts),
@@ -101,7 +110,15 @@ MODEL_CONFIGS = {
 }
 
 
-def get_model_and_tokenizer(model_name: str, device: str='cuda'):
+# Module-level cache keyed by (model_name, device) — avoids reloading the same
+# model into VRAM on every call to get_huggingface_embeddings (2A fix).
+_MODEL_CACHE: dict = {}
+
+
+def get_model_and_tokenizer(model_name: str, device: str = 'cuda'):
+    cache_key = (model_name, device)
+    if cache_key in _MODEL_CACHE:
+        return _MODEL_CACHE[cache_key]
 
     tokenizer = AutoTokenizer.from_pretrained(
         model_name, trust_remote_code=True
@@ -109,16 +126,23 @@ def get_model_and_tokenizer(model_name: str, device: str='cuda'):
     tokenizer.pad_token = tokenizer.pad_token or tokenizer.eos_token
 
     if model_config := MODEL_CONFIGS.get(model_name):
+        # Known small models (e.g. T5) stay in float32
         config = model_config.config_class.from_pretrained(model_name)
         setattr(config, model_config.dropout_field, 0)
         model = model_config.model_class.from_pretrained(
             model_name, config=config
         ).to(device)
     else:
+        # bfloat16 halves VRAM for large models (1B fix)
+        _dtype = torch.bfloat16 if torch.cuda.is_available() else torch.float32
         model = AutoModel.from_pretrained(
-            model_name, device_map=device, trust_remote_code=True
+            model_name,
+            device_map=device,
+            trust_remote_code=True,
+            torch_dtype=_dtype,
         )
 
+    _MODEL_CACHE[cache_key] = (model, tokenizer)
     return model, tokenizer
 
 
@@ -133,28 +157,29 @@ def get_tokens(
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
+    # Tokenize in batches to avoid allocating 3 full-dataset copies at once
+    # (1D fix). Collect [input_ids | attn_mask] rows; concatenate once at end.
     encoded_batches = []
-    encoded_input = tokenizer(
-        texts,
-        padding=True,
-        truncation=True,
-        max_length=512,
-        return_tensors="pt",
-    ).to(device)
+    for i in range(0, len(texts), batch_size):
+        batch = texts[i : i + batch_size]
+        encoded = tokenizer(
+            batch,
+            padding=True,
+            truncation=True,
+            max_length=512,
+            return_tensors="pt",
+        )
+        # Pad to a fixed width (512) so all batches have consistent columns
+        ids = encoded.input_ids  # (B, seq_len)
+        masks = encoded.attention_mask  # (B, seq_len)
+        # Right-pad each batch to max_length=512 for consistent stacking
+        pad_len = 512 - ids.size(1)
+        if pad_len > 0:
+            ids = torch.nn.functional.pad(ids, (0, pad_len), value=tokenizer.pad_token_id)
+            masks = torch.nn.functional.pad(masks, (0, pad_len), value=0)
+        encoded_batches.append(torch.cat([ids, masks], dim=1))
 
-    input_ids_padded = pad_sequence(
-        [torch.tensor(ids) for ids in encoded_input.input_ids],
-        batch_first=True,
-        padding_value=tokenizer.pad_token_id,
-    )
-    attention_masks_padded = pad_sequence(
-        [torch.tensor(mask) for mask in encoded_input.attention_mask],
-        batch_first=True,
-        padding_value=0,
-    )
-    all_encoded_inputs = torch.cat(
-        [input_ids_padded, attention_masks_padded], dim=1
-    )
+    all_encoded_inputs = torch.cat(encoded_batches, dim=0)
     return all_encoded_inputs.cpu().numpy()
 
 
@@ -187,7 +212,10 @@ def get_huggingface_embeddings(
         "weighted_average": weighted_average_pool,
     }
 
-    embeddings_list = []
+    # Pre-allocate output array after first batch to avoid repeated np.concatenate
+    # copies (3A fix).
+    output = None
+    write_idx = 0
     for i in tqdm(
         range(0, len(texts), batch_size), desc=f"Processing with {model_name}"
     ):
@@ -208,11 +236,17 @@ def get_huggingface_embeddings(
 
             if normalize_embeddings:
                 pooled = F.normalize(pooled, p=2, dim=1)
-            embeddings_list.append(pooled.cpu().numpy())
+            batch_np = pooled.cpu().numpy()
+
+        if output is None:
+            output = np.empty((len(texts), batch_np.shape[1]), dtype=batch_np.dtype)
+        batch_len = batch_np.shape[0]
+        output[write_idx : write_idx + batch_len] = batch_np
+        write_idx += batch_len
 
         torch.cuda.empty_cache()
 
-    return np.concatenate(embeddings_list, axis=0)
+    return output
 
 
 def get_sentence_transformer_embeddings(

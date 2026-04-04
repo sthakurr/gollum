@@ -102,6 +102,8 @@ class LLMFeaturizer(BaseNNFeaturizer):
                     modules_to_save=modules_to_save,
                 ),
             )
+            # Gradient checkpointing trades ~30% compute for 4-8x less activation memory
+            self.llm.gradient_checkpointing_enable()
             self.llm.print_trainable_parameters()
         else:
             self.llm.requires_grad_(False)
@@ -120,9 +122,12 @@ class LLMFeaturizer(BaseNNFeaturizer):
         else:
             self.projector = nn.Identity()
 
+        # bfloat16 halves VRAM vs float32 (14 GB vs 28 GB for a 7B model)
+        _llm_dtype = torch.bfloat16 if torch.cuda.is_available() else torch.float32
         self.llm = self.llm.to(
-            device=torch.device("cuda"), dtype=torch.float32
+            device=torch.device("cuda"), dtype=_llm_dtype
         )
+        self._llm_dtype = _llm_dtype
         self.projector = self.projector.to(
             device=torch.device("cuda"), dtype=torch.float32
         )
@@ -130,15 +135,18 @@ class LLMFeaturizer(BaseNNFeaturizer):
     def get_embeddings(self, x, batch_size=4):
         torch.cuda.empty_cache()
 
-        x = x.to(dtype=torch.float32)
-        self.llm = self.llm.to(dtype=torch.float32)
+        # dtype cast done once here, not inside the loop (2B fix)
+        llm_dtype = getattr(self, "_llm_dtype", torch.float32)
+        x = x.to(dtype=llm_dtype)
 
         n_points = x.size(0)
         ids_split = int(x.shape[-1] / 2)
 
-        embedding_chunks = []
-
+        # Pre-allocate output tensor after the first batch to avoid repeated
+        # concatenation copies (3A fix). Shape filled in after first batch.
+        embeddings = None
         current_idx = 0
+
         for start_idx in range(0, n_points, batch_size):
 
             torch.cuda.empty_cache()
@@ -176,13 +184,21 @@ class LLMFeaturizer(BaseNNFeaturizer):
             if self.normalize_embeddings:
                 pooled = F.normalize(pooled, p=2, dim=1)
 
-            batch_size = pooled.size(0)
-            embedding_chunks.append(pooled.to(dtype=torch.float64))
-            current_idx += batch_size
-            del outputs, last_hidden_state, pooled
+            pooled_f64 = pooled.to(dtype=torch.float64)
+            batch_len = pooled_f64.size(0)
+
+            if embeddings is None:
+                embeddings = torch.empty(
+                    (n_points, pooled_f64.size(1)),
+                    dtype=torch.float64,
+                    device=pooled_f64.device,
+                )
+            embeddings[current_idx : current_idx + batch_len] = pooled_f64
+            current_idx += batch_len
+
+            del outputs, last_hidden_state, pooled, pooled_f64
             torch.cuda.empty_cache()
-        
-        embeddings = torch.cat(embedding_chunks, dim=0)
+
         return embeddings
 
     def forward(self, x):
