@@ -213,13 +213,13 @@ class DeepGP(SurrogateModel, SingleTaskGP):
 
         if self.scale_embeddings:
             finetuned = self.scale_to_bounds(finetuned)
-        self.finetuned = finetuned
 
-        mean_x = self.mean_module(self.finetuned)
-        covar_x = self.covar_module(self.finetuned)
-        
-        wandb.log({"lr/llm_lr": self.optimizer.param_groups[0]["lr"]})
-        wandb.log({"lr/gp_lr": self.optimizer.param_groups[1]["lr"]})
+        mean_x = self.mean_module(finetuned)
+        covar_x = self.covar_module(finetuned)
+
+        if wandb.run is not None:
+            wandb.log({"lr/llm_lr": self.optimizer.param_groups[0]["lr"]})
+            wandb.log({"lr/gp_lr": self.optimizer.param_groups[1]["lr"]})
 
         return gpytorch.distributions.MultivariateNormal(mean_x, covar_x)
 

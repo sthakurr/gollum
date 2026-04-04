@@ -98,12 +98,18 @@ class BotorchOptimizer:
     def optimize_acquisition_function(
         self,
         design_space,
+        chunk_size: int = 512,
     ):
+        # Evaluate acquisition in chunks to bound peak GPU memory regardless
+        # of design space size (1C fix).
+        acq_chunks = []
         with torch.no_grad():
-            X = design_space.unsqueeze(-2)  
-            acq_values = self.acquisition_function(X).squeeze(-1)
+            for start in range(0, design_space.size(0), chunk_size):
+                chunk = design_space[start : start + chunk_size].unsqueeze(-2)
+                acq_chunks.append(self.acquisition_function(chunk).squeeze(-1).cpu())
+        acq_values = torch.cat(acq_chunks, dim=0)
         best_indices = acq_values.topk(1)[1]
-        best_point = X[best_indices].squeeze(1)
+        best_point = design_space[best_indices]
         return best_point
 
     def optimize_acquisition_function_batch(self, train_x, train_y, design_space):

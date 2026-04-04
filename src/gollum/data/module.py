@@ -113,9 +113,9 @@ class BaseDataModule(pl.LightningDataModule, ABC):
         self.heldout_y = self.heldout_y[sorted_indices]
         self.heldout_indices = self.heldout_indices[sorted_indices]
 
-        train_df = self.data.loc[train_df_indices].copy()
-        heldout_df = self.data.loc[self.heldout_indices.tolist()].copy()
-        self.data = pd.concat([train_df, heldout_df])
+        # Reindex in a single pass instead of copy + copy + concat (3B fix).
+        ordered_indices = train_df_indices + self.heldout_indices.tolist()
+        self.data = self.data.loc[ordered_indices].reset_index(drop=True)
         
 
     def update_results(self, experiment_results, experiment_indices):

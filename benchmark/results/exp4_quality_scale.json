@@ -1,0 +1,102 @@
+[
+  {
+    "branch": "scale",
+    "commit_sha": "cddb852",
+    "gpu": "NVIDIA RTX A6000",
+    "timestamp": "2026-04-04T11:57:17",
+    "seed": 1,
+    "n_iters": 20,
+    "checkpoints": {
+      "5": {
+        "best_y": 83.09647392
+      },
+      "10": {
+        "best_y": 83.09647392
+      },
+      "20": {
+        "best_y": 86.59757822
+      }
+    },
+    "error": null
+  },
+  {
+    "branch": "scale",
+    "commit_sha": "cddb852",
+    "gpu": "NVIDIA RTX A6000",
+    "timestamp": "2026-04-04T11:57:37",
+    "seed": 2,
+    "n_iters": 20,
+    "checkpoints": {
+      "5": {
+        "best_y": 80.39591728
+      },
+      "10": {
+        "best_y": 80.68492948
+      },
+      "20": {
+        "best_y": 80.68492948
+      }
+    },
+    "error": null
+  },
+  {
+    "branch": "scale",
+    "commit_sha": "cddb852",
+    "gpu": "NVIDIA RTX A6000",
+    "timestamp": "2026-04-04T11:57:52",
+    "seed": 3,
+    "n_iters": 20,
+    "checkpoints": {
+      "5": {
+        "best_y": 79.05542624
+      },
+      "10": {
+        "best_y": 86.59757822
+      },
+      "20": {
+        "best_y": 86.59757822
+      }
+    },
+    "error": null
+  },
+  {
+    "branch": "scale",
+    "commit_sha": "cddb852",
+    "gpu": "NVIDIA RTX A6000",
+    "timestamp": "2026-04-04T11:58:05",
+    "seed": 4,
+    "n_iters": 20,
+    "checkpoints": {
+      "5": {
+        "best_y": 82.32885806
+      },
+      "10": {
+        "best_y": 82.32885806
+      },
+      "20": {
+        "best_y": 82.32885806
+      }
+    },
+    "error": null
+  },
+  {
+    "branch": "scale",
+    "commit_sha": "cddb852",
+    "gpu": "NVIDIA RTX A6000",
+    "timestamp": "2026-04-04T11:58:17",
+    "seed": 5,
+    "n_iters": 20,
+    "checkpoints": {
+      "5": {
+        "best_y": 75.97219172
+      },
+      "10": {
+        "best_y": 79.76639273
+      },
+      "20": {
+        "best_y": 83.05466982
+      }
+    },
+    "error": null
+  }
+]
