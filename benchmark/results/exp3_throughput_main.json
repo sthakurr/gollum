@@ -1,0 +1,150 @@
+[
+  {
+    "branch": "main",
+    "commit_sha": "cddb852",
+    "gpu": "NVIDIA RTX A6000",
+    "timestamp": "2026-04-03T12:37:50",
+    "featurizer": "get_tokens",
+    "model_name": "t5-base",
+    "n": 50,
+    "n_repeats": 2,
+    "times_s": [
+      0.5055728992447257,
+      0.5187253821641207
+    ],
+    "mean_time_s": 0.5121491407044232,
+    "throughput_samples_per_sec": 97.62781195186368
+  },
+  {
+    "branch": "main",
+    "commit_sha": "cddb852",
+    "gpu": "NVIDIA RTX A6000",
+    "timestamp": "2026-04-03T12:37:52",
+    "featurizer": "get_tokens",
+    "model_name": "t5-base",
+    "n": 100,
+    "n_repeats": 2,
+    "times_s": [
+      0.4978980119340122,
+      0.49684248212724924
+    ],
+    "mean_time_s": 0.4973702470306307,
+    "throughput_samples_per_sec": 201.0574629202568
+  },
+  {
+    "branch": "main",
+    "commit_sha": "cddb852",
+    "gpu": "NVIDIA RTX A6000",
+    "timestamp": "2026-04-03T12:37:54",
+    "featurizer": "get_tokens",
+    "model_name": "t5-base",
+    "n": 200,
+    "n_repeats": 2,
+    "times_s": [
+      0.646083015948534,
+      0.5040668649598956
+    ],
+    "mean_time_s": 0.5750749404542148,
+    "throughput_samples_per_sec": 347.78076026410196
+  },
+  {
+    "branch": "main",
+    "commit_sha": "cddb852",
+    "gpu": "NVIDIA RTX A6000",
+    "timestamp": "2026-04-03T12:37:55",
+    "featurizer": "get_tokens",
+    "model_name": "t5-base",
+    "n": 500,
+    "n_repeats": 2,
+    "times_s": [
+      0.5361483069136739,
+      0.5201131161302328
+    ],
+    "mean_time_s": 0.5281307115219533,
+    "throughput_samples_per_sec": 946.7353234564091
+  },
+  {
+    "branch": "main",
+    "commit_sha": "cddb852",
+    "featurizer": "get_tokens",
+    "model_name": "t5-base",
+    "summary": "power_law",
+    "b": 0.9715629931580367,
+    "b_ci_low": 0.790570235286392,
+    "b_ci_high": 1.0929361694911328
+  },
+  {
+    "branch": "main",
+    "commit_sha": "cddb852",
+    "gpu": "NVIDIA RTX A6000",
+    "timestamp": "2026-04-03T12:37:57",
+    "featurizer": "get_huggingface_embeddings",
+    "model_name": "t5-base",
+    "n": 50,
+    "n_repeats": 2,
+    "times_s": [
+      0.26171254413202405,
+      0.2520718998275697
+    ],
+    "mean_time_s": 0.2568922219797969,
+    "throughput_samples_per_sec": 194.63415285470268
+  },
+  {
+    "branch": "main",
+    "commit_sha": "cddb852",
+    "gpu": "NVIDIA RTX A6000",
+    "timestamp": "2026-04-03T12:37:59",
+    "featurizer": "get_huggingface_embeddings",
+    "model_name": "t5-base",
+    "n": 100,
+    "n_repeats": 2,
+    "times_s": [
+      0.5545744732953608,
+      0.5526800588704646
+    ],
+    "mean_time_s": 0.5536272660829127,
+    "throughput_samples_per_sec": 180.62694185481777
+  },
+  {
+    "branch": "main",
+    "commit_sha": "cddb852",
+    "gpu": "NVIDIA RTX A6000",
+    "timestamp": "2026-04-03T12:38:01",
+    "featurizer": "get_huggingface_embeddings",
+    "model_name": "t5-base",
+    "n": 200,
+    "n_repeats": 2,
+    "times_s": [
+      0.9642035281285644,
+      0.9249920109286904
+    ],
+    "mean_time_s": 0.9445977695286274,
+    "throughput_samples_per_sec": 211.7303326894408
+  },
+  {
+    "branch": "main",
+    "commit_sha": "cddb852",
+    "gpu": "NVIDIA RTX A6000",
+    "timestamp": "2026-04-03T12:38:12",
+    "featurizer": "get_huggingface_embeddings",
+    "model_name": "t5-base",
+    "n": 500,
+    "n_repeats": 2,
+    "times_s": [
+      3.716055750846863,
+      2.3732346328906715
+    ],
+    "mean_time_s": 3.044645191868767,
+    "throughput_samples_per_sec": 164.22274796923247
+  },
+  {
+    "branch": "main",
+    "commit_sha": "cddb852",
+    "featurizer": "get_huggingface_embeddings",
+    "model_name": "t5-base",
+    "summary": "power_law",
+    "b": -0.0518479104828599,
+    "b_ci_low": -0.27730251427363556,
+    "b_ci_high": 0.22921486843101097
+  }
+]
