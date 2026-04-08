@@ -1,6 +1,6 @@
 from rdkit.Chem import AllChem, Descriptors, MolFromSmiles, rdMolDescriptors
 import numpy as np
-from transformers import AutoModelWithLMHead, AutoTokenizer
+from transformers import AutoModelForMaskedLM, AutoTokenizer
 import torch
 import pandas as pd
 import os
@@ -53,7 +53,7 @@ def mqn_features(smiles):
 
 def chemberta_features(smiles):
     # any model weights from the link above will work here
-    model = AutoModelWithLMHead.from_pretrained(
+    model = AutoModelForMaskedLM.from_pretrained(
         "seyonec/ChemBERTa-zinc-base-v1"
     )
     tokenizer = AutoTokenizer.from_pretrained("seyonec/ChemBERTa-zinc-base-v1")
