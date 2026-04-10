@@ -318,7 +318,7 @@ def train(config):
 
             if reasoning_agent is not None:
                 evaluated_texts = _get_input_texts(dm, evaluated_original_indices)
-                evaluated_scores = dm.y[evaluated_original_indices].squeeze().tolist()
+                evaluated_scores = dm.y[evaluated_original_indices].squeeze(-1).tolist()
                 reasoning_agent.record_observation(i, evaluated_texts, evaluated_scores)
 
                 if config.get("re_embed_heldout", False):

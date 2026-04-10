@@ -1,7 +1,7 @@
 data:
   class_path: gollum.data.module.BaseDataModule
   init_args:
-    data_path: data/buchwald-hartwig/bh_reaction_1.csv
+    data_path: data/buchwald-hartwig/test.csv
     input_column: procedure
     target_column: objective
     maximize: true
@@ -23,7 +23,7 @@ data:
       class_path: gollum.initialization.initializers.BOInitializer
       init_args:
         method: true_random
-        n_clusters: 10
+        n_clusters: 1
 bo:
   class_path: gollum.bo.optimizer.BotorchOptimizer
   init_args:
@@ -92,7 +92,7 @@ reasoning_agent:
   model_name: microsoft/Phi-3-mini-4k-instruct
   max_new_tokens: 150
 re_embed_heldout: true      # default false
-re_embed_train: false       # default false
+re_embed_train: true       # default false
 
-n_iters: 50
+n_iters: 10
 seed: 1

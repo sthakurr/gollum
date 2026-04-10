@@ -85,10 +85,10 @@ class BotorchOptimizer:
         )
 
         if self.batch_size == 1:
-            new_x = self.optimize_acquisition_function(design_space)
-            return [new_x]
+            best_point, _, _ = self.optimize_acquisition_function(design_space)
+            return [best_point]
         else:
-            candidates = self.optimize_acquisition_function_batch(
+            candidates, _, _ = self.optimize_acquisition_function_batch(
                 train_x,
                 train_y,
                 design_space,
