@@ -213,8 +213,7 @@ class DeepGP(SurrogateModel, SingleTaskGP):
 
         if self.scale_embeddings:
             finetuned = self.scale_to_bounds(finetuned)
-        # Removed self.finetuned assignment — storing as instance attr caused
-        # the tensor to accumulate on GPU across iterations (2C fix).
+        # self.finetuned = finetuned
 
         mean_x = self.mean_module(finetuned)
         covar_x = self.covar_module(finetuned)

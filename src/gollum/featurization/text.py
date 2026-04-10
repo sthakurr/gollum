@@ -134,7 +134,7 @@ def get_model_and_tokenizer(model_name: str, device: str='cuda'):
             torch_dtype=_dtype,
         )
 
-    _MODEL_CACHE[cache_key] = (model, tokenizer)
+    # _MODEL_CACHE[cache_key] = (model, tokenizer)
     return model, tokenizer
 
 

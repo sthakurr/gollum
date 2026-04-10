@@ -109,7 +109,7 @@ class BotorchOptimizer:
                 acq_chunks.append(self.acquisition_function(chunk).squeeze(-1).cpu())
         acq_values = torch.cat(acq_chunks, dim=0)
         best_indices = acq_values.topk(1)[1]
-        best_point = X[best_indices].squeeze(1)
+        best_point = design_space[best_indices].squeeze(1)
         return best_point, best_indices, acq_values
 
     def optimize_acquisition_function_batch(self, train_x, train_y, design_space):

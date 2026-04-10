@@ -83,5 +83,6 @@ surrogate_model:
         normalize_embeddings: false
         lora_dropout: 0.2
         trainable: true
+  save_checkpoints: false
 n_iters: 50
 seed: 40

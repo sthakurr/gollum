@@ -43,6 +43,7 @@ warnings.filterwarnings(
 
 from gollum.data.module import BaseDataModule
 from gollum.bo.optimizer import BotorchOptimizer
+from gollum.reasoning.agent import ReasoningAgent
 
 
 from gollum.metrics import (
@@ -195,6 +196,23 @@ def setup_data(config):
 
 
 
+def setup_reasoning_agent(config) -> ReasoningAgent:
+    ra_config = config.get("reasoning_agent", {})
+    return ReasoningAgent(
+        mode=ra_config.get("mode", "programmatic"),
+        model_name=ra_config.get("model_name", "microsoft/Phi-3-mini-4k-instruct"),
+        max_new_tokens=ra_config.get("max_new_tokens", 150),
+    )
+
+
+def _get_input_texts(dm, indices) -> list:
+    col = dm.input_column
+    rows = dm.data.loc[list(indices)]
+    if isinstance(col, list):
+        return rows[col].apply(lambda r: " ".join(r.astype(str)), axis=1).tolist()
+    return rows[col].tolist()
+
+
 def setup_bo_optimizer(config, design_space):
     bo_config = config["bo"]["init_args"]
     surrogate_model_config = config["surrogate_model"]
@@ -226,6 +244,11 @@ def train(config):
 
         dm = setup_data(config)
         bo = setup_bo_optimizer(config, design_space=dm.heldout_x)
+        reasoning_agent = (
+            setup_reasoning_agent(config)
+            if config.get("reasoning_agent") is not None
+            else None
+        )
         
         data_stats = calculate_data_stats(dm.x, dm.y)
         log_data_stats(data_stats)
@@ -293,18 +316,36 @@ def train(config):
             total_indices = len(dm.train_indexes) + len(dm.heldout_indices)
             assert total_indices == len(dm.x), "Mismatch in the total number of indices"
 
+            if reasoning_agent is not None:
+                evaluated_texts = _get_input_texts(dm, evaluated_original_indices)
+                evaluated_scores = dm.y[evaluated_original_indices].squeeze().tolist()
+                reasoning_agent.record_observation(i, evaluated_texts, evaluated_scores)
+
+                if config.get("re_embed_heldout", False):
+                    heldout_texts = _get_input_texts(dm, dm.heldout_indices)
+                    dm.heldout_x = torch.from_numpy(
+                        reasoning_agent.refeaturize(heldout_texts, dm.featurizer)
+                    ).to(torch.float64)
+
+                if config.get("re_embed_train", False):
+                    train_texts = _get_input_texts(dm, dm.train_indexes)
+                    dm.train_x = torch.from_numpy(
+                        reasoning_agent.refeaturize(train_texts, dm.featurizer)
+                    ).to(torch.float64)
+
         log_bo_metrics(data_stats, dm.train_y, epoch=config["n_iters"])
 
         # Save finetuned model if using DeepGP
         if config["surrogate_model"]["class_path"] == "gollum.surrogate_models.gp.DeepGP":
-            model_save_path = os.path.join(
-                "checkpoints", run.name if run else "default", "finetuned_model.pt"
-            )
-            os.makedirs(os.path.dirname(model_save_path), exist_ok=True)
-            torch.save(
-                bo.surrogate_model.finetuning_model.state_dict(), model_save_path
-            )
-            print(f"Saved finetuned model to {model_save_path}")
+            if config["surrogate_model"]["save_checkpoints"]:
+                model_save_path = os.path.join(
+                    "checkpoints", run.name if run else "default", "finetuned_model.pt"
+                )
+                os.makedirs(os.path.dirname(model_save_path), exist_ok=True)
+                torch.save(
+                    bo.surrogate_model.finetuning_model.state_dict(), model_save_path
+                )
+                print(f"Saved finetuned model to {model_save_path}")
 
             # Visualize embeddings if requested
             if config.get("visualize", False) and config.get("full_data_path"):
@@ -350,6 +391,9 @@ def main():
     parser.add_argument("--group", type=str, help="Wandb group runs")
     parser.add_argument("--visualize", type=bool, default=False, help="Visualize embeddings after training")
     parser.add_argument("--full_data_path", type=str, default=None, help="Path to full dataset with split labels (for visualization)")
+    parser.add_argument("--reasoning_agent", type=dict, default=None, help="Reasoning agent config: {mode, model_name, max_new_tokens}")
+    parser.add_argument("--re_embed_heldout", type=bool, default=False, help="Re-featurize heldout pool each iteration using reasoning agent context")
+    parser.add_argument("--re_embed_train", type=bool, default=False, help="Re-featurize train set each iteration using reasoning agent context")
 
     parser.add_subclass_arguments(BaseDataModule, "data", instantiate=False)
     parser.add_subclass_arguments(SurrogateModel, "surrogate_model", instantiate=False)
