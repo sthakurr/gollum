@@ -1,7 +1,7 @@
 data:
   class_path: gollum.data.module.BaseDataModule
   init_args:
-    data_path: data/flip2/one_to_many_train.csv
+    data_path: data/flip2/alpha-amylase/one_to_many_train.csv
     # test_data_path: data/flip2/enzymes_sequence_10k.csv
     # round_2_data_path: data/flip2/enzymes_sequence_round_2.csv
     input_column: sequence
@@ -23,7 +23,7 @@ data:
 bo:
   class_path: gollum.bo.optimizer.BotorchOptimizer
   init_args:
-    batch_size: 1
+    batch_size: 100
 acquisition:
   class_path: botorch.acquisition.analytic.ExpectedImprovement
   init_args:

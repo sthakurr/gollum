@@ -104,7 +104,7 @@ class BotorchOptimizer:
             acq_values = self.acquisition_function(X).squeeze(-1)
         best_indices = acq_values.topk(1)[1]
         best_point = X[best_indices].squeeze(1)
-        return best_point
+        return best_point, best_indices, acq_values
 
     def optimize_acquisition_function_batch(self, train_x, train_y, design_space):
 
@@ -114,6 +114,7 @@ class BotorchOptimizer:
             candidate_acq_values = []
 
             for i in range(self.batch_size):
+                print("acq function output: ", self.optimize_acquisition_function(design_space))
                 best_point, best_indices, acq_values = (
                     self.optimize_acquisition_function(design_space)
                 )
