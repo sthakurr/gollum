@@ -299,6 +299,12 @@ __pycache__/
 # C extensions
 *.so
 
+# Model checkpoints
+checkpoints/
+
+# Wandb runs
+wandb/
+
 # Distribution / packaging
 .Python
 build/

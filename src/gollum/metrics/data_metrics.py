@@ -18,7 +18,8 @@ def calculate_data_stats(x, y):
     for q in [0.75, 0.9, 0.95, 0.99]:
         stats[f"target_q{int(q * 100)}"] = torch.quantile(y.float(), q)
     for n in [1, 3, 5, 10]:
-        top_values, _ = torch.topk(y, n, dim=0)
+        k = min(n, y.shape[0])
+        top_values, _ = torch.topk(y, k, dim=0)
         stats[f"top_{n}"] = top_values[-1]
     return stats
 
