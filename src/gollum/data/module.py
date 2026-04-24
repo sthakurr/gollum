@@ -1,10 +1,8 @@
-import pytorch_lightning as pl
 import pandas as pd
 import numpy as np
 import torch
 from typing import Optional, Union, List
 
-from pytorch_lightning.utilities.types import EVAL_DATALOADERS, TRAIN_DATALOADERS
 from torch.utils.data import DataLoader
 
 from gollum.data.dataset import SingleSampleDataset
@@ -17,7 +15,7 @@ import os
 os.environ["OMP_NUM_THREADS"] = "28"
 
 
-class BaseDataModule(pl.LightningDataModule, ABC):
+class BaseDataModule(ABC):
     def __init__(
         self,
         data_path: str,
@@ -161,14 +159,10 @@ class BaseDataModule(pl.LightningDataModule, ABC):
         self.normalize_data()
         self.split_data()
 
-    def train_dataloader(self) -> TRAIN_DATALOADERS:
+    def train_dataloader(self) -> DataLoader:
         train_dataset = SingleSampleDataset(self.train_x, self.train_y)
         return DataLoader(train_dataset, num_workers=4)
 
-    def val_dataloader(self) -> EVAL_DATALOADERS:
+    def val_dataloader(self) -> DataLoader:
         valid_dataset = SingleSampleDataset(self.heldout_x, self.heldout_y)
         return DataLoader(valid_dataset, num_workers=4)
-
-    def transfer_batch_to_device(self, batch, device, dataloader_idx):
-        batch = [item.to(device) for item in batch]
-        return batch

@@ -39,6 +39,7 @@ class Featurizer:
         """
         from gollum.featurization.molecular import fingerprints, fragments, mqn_features, chemberta_features
         from gollum.featurization.text import get_tokens, get_huggingface_embeddings, instructor_embeddings
+        # from gollum.featurization.reaction import rxnfp, drfp, one_hot
         from gollum.featurization.general import precalculated, all_continuous
 
         registry = {

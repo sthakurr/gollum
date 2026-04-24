@@ -24,7 +24,7 @@ import torch.nn.functional as F
 from sentence_transformers import SentenceTransformer
 from InstructorEmbedding import INSTRUCTOR
 
-from openai import OpenAI
+# from openai import OpenAI
 
 # Lazy singleton — avoids crashing on import when OPENAI_API_KEY is not set
 _openai_client = None
@@ -101,6 +101,11 @@ MODEL_CONFIGS = {
         T5Config,
         T5EncoderModel,
     ),
+    "Rostlab/prot_t5_xl_uniref50": ModelConfig(
+        "Rostlab/prot_t5_xl_uniref50",
+        T5Config,
+        T5EncoderModel,
+    ),
     "McGill-NLP/LLM2Vec-Meta-Llama-3-8B-Instruct-mntp": ModelConfig(
         "McGill-NLP/LLM2Vec-Meta-Llama-3-8B-Instruct-mntp",
         LlamaConfig,
@@ -108,6 +113,20 @@ MODEL_CONFIGS = {
         "attn_dropout",
     ),
 }
+
+
+def _is_esmc_model(model_name: str) -> bool:
+    name = model_name.lower()
+    return "esmc" in name or "evolutionaryscale/esmc" in name
+
+
+def _normalize_esmc_model_name(model_name: str) -> str:
+    normalized = model_name.lower()
+    if "600m" in normalized:
+        return "esmc_600m"
+    if "300m" in normalized:
+        return "esmc_300m"
+    return "esmc_600m"
 
 
 # Module-level cache keyed by (model_name, device) — avoids reloading the same
@@ -120,17 +139,28 @@ def get_model_and_tokenizer(model_name: str, device: str = 'cuda'):
     if cache_key in _MODEL_CACHE:
         return _MODEL_CACHE[cache_key]
 
-    tokenizer = AutoTokenizer.from_pretrained(
-        model_name, trust_remote_code=True
-    )
+    if _is_esmc_model(model_name):
+        from esm.models.esmc import ESMC
+
+        esmc_name = _normalize_esmc_model_name(model_name)
+        torch_device = torch.device(device if torch.cuda.is_available() else "cpu")
+        model = ESMC.from_pretrained(esmc_name, device=torch_device).to(torch_device)
+        tokenizer = model.tokenizer
+        return model, tokenizer
+
+    if "prot_t5" in model_name.lower():
+        tokenizer = T5Tokenizer.from_pretrained(model_name, do_lower_case=False, legacy=True)
+    else:
+        tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
     tokenizer.pad_token = tokenizer.pad_token or tokenizer.eos_token
 
     if model_config := MODEL_CONFIGS.get(model_name):
         # Known small models (e.g. T5) stay in float32
         config = model_config.config_class.from_pretrained(model_name)
         setattr(config, model_config.dropout_field, 0)
+        torch_dtype = torch.bfloat16 if "prot_t5" in model_name.lower() else torch.float32
         model = model_config.model_class.from_pretrained(
-            model_name, config=config
+            model_name, config=config, torch_dtype=torch_dtype
         ).to(device)
     else:
         # bfloat16 halves VRAM for large models (1B fix)
@@ -153,11 +183,48 @@ def get_tokens(
     device="cuda" if torch.cuda.is_available() else "cpu",
 ):
     print(model_name, "for get tokens")
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    if _is_esmc_model(model_name):
+        from esm.tokenization import get_esmc_model_tokenizers
+
+        tokenizer = get_esmc_model_tokenizers()
+        token_batches = []
+        for i in range(0, len(texts), batch_size):
+            batch = texts[i : i + batch_size]
+            encoded = tokenizer(
+                batch,
+                padding=True,
+                truncation=True,
+                max_length=512,
+                return_tensors="pt",
+            )
+            ids = encoded.get("input_ids")
+            if ids is None:
+                ids = encoded["sequence_tokens"]
+            masks = encoded.get("attention_mask")
+            if masks is None:
+                masks = (ids != tokenizer.pad_token_id).long()
+
+            pad_len = 512 - ids.size(1)
+            if pad_len > 0:
+                ids = torch.nn.functional.pad(ids, (0, pad_len), value=tokenizer.pad_token_id)
+                masks = torch.nn.functional.pad(masks, (0, pad_len), value=0)
+
+            token_batches.append(torch.cat([ids, masks], dim=1))
+
+        all_encoded_inputs = torch.cat(token_batches, dim=0)
+        return all_encoded_inputs.cpu().numpy()
+
+    if "prot_t5" in model_name.lower():
+        tokenizer = T5Tokenizer.from_pretrained(model_name, do_lower_case=False, legacy=True)
+        # ProtT5 requires space-separated amino acids
+        texts = [" ".join(list(seq)) for seq in texts]
+    else:
+        tokenizer = AutoTokenizer.from_pretrained(model_name)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
-    # Tokenize in batches to avoid allocating 3 full-dataset copies at once (1D fix).
+    # Tokenize in batches to avoid allocating 3 full-dataset copies at once
+    # (1D fix). Collect [input_ids | attn_mask] rows; concatenate once at end.
     encoded_batches = []
     for i in range(0, len(texts), batch_size):
         batch = texts[i : i + batch_size]
@@ -168,8 +235,10 @@ def get_tokens(
             max_length=512,
             return_tensors="pt",
         )
-        ids = encoded.input_ids
-        masks = encoded.attention_mask
+        # Pad to a fixed width (512) so all batches have consistent columns
+        ids = encoded.input_ids  # (B, seq_len)
+        masks = encoded.attention_mask  # (B, seq_len)
+        # Right-pad each batch to max_length=512 for consistent stacking
         pad_len = 512 - ids.size(1)
         if pad_len > 0:
             ids = torch.nn.functional.pad(ids, (0, pad_len), value=tokenizer.pad_token_id)
@@ -197,6 +266,10 @@ def get_huggingface_embeddings(
     model, tokenizer = get_model_and_tokenizer(model_name, device)
     left_padding = tokenizer.padding_side == "left"
     model.eval()
+
+    # ProtT5 requires space-separated amino acids
+    if "prot_t5" in model_name.lower():
+        texts = [" ".join(list(seq)) for seq in texts]
 
     # optionally add prefix to each text
     if prefix:

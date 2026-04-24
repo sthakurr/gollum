@@ -1,12 +1,13 @@
 import warnings
 from botorch.exceptions import InputDataWarning
 
+import os
 import re
 import torch
 import logging
 
 warnings.filterwarnings("ignore", category=InputDataWarning)
-logger = logging.getLogger("pytorch_lightning.utilities.rank_zero")
+logger = logging.getLogger(__name__)
 warnings.filterwarnings(
     "ignore",
     message="ExpectedImprovement has known numerical issues that lead to suboptimal optimization performance"
@@ -33,12 +34,6 @@ warnings.filterwarnings(
     module="torch",
 )
 
-warnings.filterwarnings(
-    "ignore",
-    message=".*does not have many workers which may be a bottleneck.*",
-    category=UserWarning,
-    module="pytorch_lightning.trainer.connectors.data_connector",
-)
 
 from gollum.data.module import BaseDataModule
 from gollum.bo.optimizer import BotorchOptimizer
@@ -50,12 +45,23 @@ from gollum.metrics import (
     log_data_stats,
 )
 
+try:
+    from gollum.metrics.analysis import calculate_distances, compute_thresholds
+    _DISTANCE_METRICS_AVAILABLE = True
+except Exception:
+    _DISTANCE_METRICS_AVAILABLE = False
+
 
 
 torch.set_float32_matmul_precision("high")
 
 
-from pytorch_lightning import seed_everything
+def seed_everything(seed: int, workers: bool = False):
+    import random
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
 import wandb
 from tqdm import tqdm
 from gollum.utils.config import flatten
@@ -83,7 +89,11 @@ MODEL_EMBEDDING_SIZES = {
     "text-embedding-3-large": 3072,
     "nomic-ai/modernbert-embed-base;get_huggingface_embeddings;normalize:False;pooling:cls": 768,
     "Qwen/Qwen2-7B-Instruct;get_huggingface_embeddings;normalize:False;pooling:last_token": 3584,
-    "GT4SD/multitask-text-and-chemistry-t5-base-augm": 768, 
+    "GT4SD/multitask-text-and-chemistry-t5-base-augm": 768,
+    "facebook/esm2_t33_650M_UR50D": 1280,
+    "Rostlab/prot_t5_xl_uniref50": 1024,
+    "EvolutionaryScale/esmc-600m-2024-12": 1152,
+    "EvolutionaryScale/esm3-sm-open-v1": 1024,
 }
 
 
@@ -107,7 +117,8 @@ def configure_pooling_method(config, model_name):
         "GT4SD/multitask-text-and-chemistry-t5-base-augm-from-rxn": "average",
         "t5-base": "average",
         "Qwen/Qwen2-7B-Instruct": "last_token_pool",
-      
+        "facebook/esm2_t33_650M_UR50D": "average",
+        "Rostlab/prot_t5_xl_uniref50": "average",
     }
 
     if model_name in hugging_face_models:
@@ -191,6 +202,26 @@ def setup_data(config):
 
 
 
+def _log_distance_metrics(train_x, train_y, epoch=0):
+    """Log pairwise L2 distance metrics between high/low scoring training points."""
+    x_cpu = train_x.cpu().float()
+    y_cpu = train_y.cpu().squeeze().float()
+    low_thr, high_thr = compute_thresholds(y_cpu, low_quantile=0.2, high_quantile=0.8)
+    hh, hl, ll, avg = calculate_distances(
+        x_cpu, y_cpu,
+        high_score_threshold=high_thr.item(),
+        low_score_threshold=low_thr.item(),
+    )
+    dist_log = {"distances/avg": avg.item(), "epoch": epoch}
+    if hh.numel() > 0:
+        dist_log["distances/hh_mean"] = hh.mean().item()
+    if hl.numel() > 0:
+        dist_log["distances/hl_mean"] = hl.mean().item()
+    if ll.numel() > 0:
+        dist_log["distances/ll_mean"] = ll.mean().item()
+    wandb.log(dist_log)
+
+
 def setup_bo_optimizer(config, design_space):
     bo_config = config["bo"]["init_args"]
     surrogate_model_config = config["surrogate_model"]
@@ -212,8 +243,15 @@ def train(config):
     config = validate_configuration(config)
     wandb_config = flatten(config)
     
+    model_name = config["data"]["init_args"]["featurizer"]["init_args"]["model_name"]
+    model_short = model_name.split("/")[-1]
+    run_name = f"{model_short}_seed{config['seed']}"
+
     with wandb.init(
-        project="gollum", config=wandb_config, group=config["group"]
+        project=config.get("wandb_project", "gollum"),
+        config=wandb_config,
+        group=config["group"],
+        name=run_name,
     ) as run:
 
         dm = setup_data(config)
@@ -229,17 +267,10 @@ def train(config):
             design_space = dm.heldout_x.clone().to("cuda")
 
             ## this trains the model, updates acqf and returns the next point to evaluate
-            x_next = bo.suggest_next_experiments(train_x, train_y, design_space)
-            x_next = torch.stack(x_next)
+            _, candidate_positions = bo.suggest_next_experiments(train_x, train_y, design_space)
+            indices = torch.tensor(candidate_positions)
 
             log_bo_metrics(data_stats, dm.train_y, epoch=i)
-           
-
-            matches = (design_space.unsqueeze(0).to("cuda") == x_next).all(dim=-1)
-            indices = matches.nonzero(as_tuple=True)[1].to("cpu")
-
-            if not torch.all(matches.sum(dim=-1) == 1):
-                print("Unable to find a unique match for some x_next in the dataset.")
 
             wandb.log(
                 {
@@ -247,8 +278,6 @@ def train(config):
                     "epoch": i,
                 }
             )
-
-            x_next = x_next.squeeze(1)
 
             # update indices tracking
             evaluated_original_indices = dm.heldout_indices[indices]
@@ -285,7 +314,45 @@ def train(config):
             total_indices = len(dm.train_indexes) + len(dm.heldout_indices)
             assert total_indices == len(dm.x), "Mismatch in the total number of indices"
 
+            if _DISTANCE_METRICS_AVAILABLE and len(dm.train_indexes) >= 5:
+                _log_distance_metrics(dm.train_x, dm.train_y, epoch=i)
+
         log_bo_metrics(data_stats, dm.train_y, epoch=config["n_iters"])
+
+        # Save finetuned model if using DeepGP
+        if config["surrogate_model"]["class_path"] == "gollum.surrogate_models.gp.DeepGP":
+            save_ckpt = config.get("save_checkpoints", config["surrogate_model"].get("save_checkpoints", False))
+            if save_ckpt:
+                model_save_path = os.path.join(
+                    "checkpoints", run.name if run else "default", "finetuned_model.pt"
+                )
+                os.makedirs(os.path.dirname(model_save_path), exist_ok=True)
+                torch.save(
+                    bo.surrogate_model.finetuning_model.state_dict(), model_save_path
+                )
+                print(f"Saved finetuned model to {model_save_path}")
+
+            # Visualize embeddings if requested
+            if config.get("visualize", False) and config.get("full_data_path"):
+                from gollum.visualization import visualize_embeddings
+
+                ft_config = config["surrogate_model"]["init_args"]["finetuning_model"]["init_args"]
+                model_name = ft_config["model_name"]
+                pooling_method = ft_config["pooling_method"]
+
+                output_dir = os.path.join(
+                    "plots", "embeddings", run.name if run else "default"
+                )
+                visualize_embeddings(
+                    full_data_path=config["full_data_path"],
+                    model_name=model_name,
+                    pooling_method=pooling_method,
+                    model_state_path=model_save_path,
+                    finetuning_model_config=ft_config,
+                    output_dir=output_dir,
+                    random_state=config.get("seed", 42),
+                )
+
         logger.setLevel(logging.INFO)
         wandb.finish()
 
@@ -307,7 +374,10 @@ def main():
     parser.add_argument("--n_iters", type=int, help="How many iterations to run")
    
     parser.add_argument("--group", type=str, help="Wandb group runs")
-    
+    parser.add_argument("--wandb_project", type=str, default="gollum", help="Wandb project name")
+    parser.add_argument("--visualize", type=bool, default=False, help="Visualize embeddings after training")
+    parser.add_argument("--full_data_path", type=str, default=None, help="Path to full dataset with split labels (for visualization)")
+    parser.add_argument("--save_checkpoints", type=bool, default=False, help="Save finetuned model checkpoints for DeepGP runs")
 
     parser.add_subclass_arguments(BaseDataModule, "data", instantiate=False)
     parser.add_subclass_arguments(SurrogateModel, "surrogate_model", instantiate=False)

@@ -175,6 +175,10 @@ class DeepGP(SurrogateModel, SingleTaskGP):
 
         self.finetuning_model = finetuning_model
         self.finetuning_model = self.finetuning_model.to(**tkwargs)
+        # Restore LLM weights to bfloat16 — float64 is only needed for the GP
+        # kernel and projector, not the language model itself.
+        if hasattr(self.finetuning_model, "llm") and hasattr(self.finetuning_model, "_llm_dtype"):
+            self.finetuning_model.llm = self.finetuning_model.llm.to(dtype=self.finetuning_model._llm_dtype)
         self.likelihood.noise_covar.register_constraint(
             "raw_noise", GreaterThan(noise_constraint)
         )
@@ -213,10 +217,12 @@ class DeepGP(SurrogateModel, SingleTaskGP):
 
         if self.scale_embeddings:
             finetuned = self.scale_to_bounds(finetuned)
+        # Removed self.finetuned assignment — storing as instance attr caused
+        # the tensor to accumulate on GPU across iterations (2C fix).
 
         mean_x = self.mean_module(finetuned)
         covar_x = self.covar_module(finetuned)
-
+        
         if wandb.run is not None:
             wandb.log({"lr/llm_lr": self.optimizer.param_groups[0]["lr"]})
             wandb.log({"lr/gp_lr": self.optimizer.param_groups[1]["lr"]})
