@@ -1,29 +1,30 @@
+# Config for FLIP2 benchmarks using HuggingFace protein LMs (ESM2, ProtT5, t5-base).
+# model_name, input_dim, pooling_method, and data_path are patched at runtime by the
+# cluster script. validate_configuration() auto-corrects input_dim if needed.
 data:
   class_path: gollum.data.module.BaseDataModule
   init_args:
-    data_path: data/reactions/buchwald-hartwig/bh_reaction_1_procedure_template_basic.csv
-    input_column: procedure
-    target_column: objective
+    data_path: data/flip2/trpB/one_to_many_train.csv
+    input_column: sequence
+    target_column: target
     maximize: true
     exclude_top: true
     normalize_input: original
     featurizer:
       class_path: gollum.data.module.Featurizer
       init_args:
-        representation: get_huggingface_embeddings
-        model_name: t5-base
+        representation: get_tokens
+        model_name: facebook/esm2_t33_650M_UR50D
         pooling_method: average
-        normalize_embeddings: false
     initializer:
       class_path: gollum.initialization.initializers.BOInitializer
       init_args:
         method: true_random
-        n_clusters: 10
+        n_clusters: 96
 bo:
   class_path: gollum.bo.optimizer.BotorchOptimizer
   init_args:
-    batch_strategy: "kriging"
-    batch_size: 1
+    batch_size: 96
 acquisition:
   class_path: botorch.acquisition.analytic.ExpectedImprovement
   init_args:
@@ -70,8 +71,17 @@ surrogate_model:
     scale_embeddings: true
     train_mll_additionally: false
     finetuning_model:
-      class_path: gollum.featurization.deep.ProjectionLayer 
+      class_path: gollum.featurization.deep.LLMFeaturizer
       init_args:
         projection_dim: 64
-n_iters: 50
-seed: 1
+        from_top: true
+        target_ratio: 0.25
+        model_name: facebook/esm2_t33_650M_UR50D
+        input_dim: 1280
+        pooling_method: average
+        normalize_embeddings: false
+        lora_dropout: 0.2
+        trainable: true
+save_checkpoints: false
+n_iters: 10
+seed: 40

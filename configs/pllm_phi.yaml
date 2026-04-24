@@ -55,7 +55,6 @@ surrogate_model:
             active_dims: null
             lengthscale_prior: null
             lengthscale_constraint: null
-            eps: 1.0e-06
         outputscale_prior: null
         outputscale_constraint: null
         ard_num_dims: null
@@ -63,7 +62,6 @@ surrogate_model:
         active_dims: null
         lengthscale_prior: null
         lengthscale_constraint: null
-        eps: 1.0e-06
     mean_module:
       class_path: gpytorch.means.ConstantMean
     standardize: true
