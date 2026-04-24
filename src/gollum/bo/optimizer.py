@@ -85,15 +85,15 @@ class BotorchOptimizer:
         )
 
         if self.batch_size == 1:
-            new_x = self.optimize_acquisition_function(design_space)
-            return [new_x]
+            best_point, best_indices, _ = self.optimize_acquisition_function(design_space)
+            return [best_point], [best_indices.item()]
         else:
-            candidates = self.optimize_acquisition_function_batch(
+            candidates, candidate_indices, _ = self.optimize_acquisition_function_batch(
                 train_x,
                 train_y,
                 design_space,
             )
-            return candidates
+            return candidates, candidate_indices
 
     def optimize_acquisition_function(
         self,
@@ -106,10 +106,10 @@ class BotorchOptimizer:
         with torch.no_grad():
             for start in range(0, design_space.size(0), chunk_size):
                 chunk = design_space[start : start + chunk_size].unsqueeze(-2)
-                acq_chunks.append(self.acquisition_function(chunk).squeeze(-1).cpu())
+                acq_chunks.append(self.acquisition_function(chunk).reshape(-1).cpu())
         acq_values = torch.cat(acq_chunks, dim=0)
         best_indices = acq_values.topk(1)[1]
-        best_point = X[best_indices].squeeze(1)
+        best_point = design_space[best_indices].squeeze(1)
         return best_point, best_indices, acq_values
 
     def optimize_acquisition_function_batch(self, train_x, train_y, design_space):
@@ -118,10 +118,11 @@ class BotorchOptimizer:
             candidates = []
             candidate_indices = []
             candidate_acq_values = []
+            # Track original positions as rows are removed from design_space
+            original_positions = torch.arange(design_space.size(0))
 
-            for i in range(self.batch_size):
-                print("acq function output: ", self.optimize_acquisition_function(design_space))
-                best_point, best_indices, acq_values = (
+            for _ in range(self.batch_size):
+                best_point, best_idx, acq_values = (
                     self.optimize_acquisition_function(design_space)
                 )
                 y_lie = self.lie_to_me(
@@ -130,10 +131,12 @@ class BotorchOptimizer:
                 train_x = torch.cat([train_x, best_point])
                 train_y = torch.cat([train_y, y_lie])
 
-                design_space = torch_delete_rows(design_space, best_indices)
+                original_pos = original_positions[best_idx].item()
+                design_space = torch_delete_rows(design_space, best_idx)
+                original_positions = torch_delete_rows(original_positions, best_idx)
 
                 candidates.append(best_point)
-                candidate_indices.append(best_indices.item())
+                candidate_indices.append(original_pos)
                 candidate_acq_values.append(acq_values)
 
         return candidates, candidate_indices, candidate_acq_values

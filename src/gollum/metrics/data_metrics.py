@@ -21,6 +21,8 @@ def calculate_data_stats(x, y):
         k = min(n, y.shape[0])
         top_values, _ = torch.topk(y, k, dim=0)
         stats[f"top_{n}"] = top_values[-1]
+    # Total count of points in the top 5% of the full dataset (denominator for coverage)
+    stats["total_q95_count"] = (y.float() >= stats["target_q95"]).sum()
     return stats
 
 
@@ -52,6 +54,15 @@ def log_bo_metrics(data_stats, train_y, epoch=0):
     log_best_so_far(train_y, epoch)
     log_top_n_counts(data_stats, train_y, epoch)
     log_quantile_counts(data_stats, train_y, epoch)
+    log_top5pct_coverage(data_stats, train_y, epoch)
+
+
+def log_top5pct_coverage(data_stats, train_y, epoch=0):
+    total = data_stats["total_q95_count"].item()
+    if total > 0:
+        threshold = data_stats["target_q95"]
+        found = (train_y >= threshold).sum().item()
+        wandb.log({"top5pct_coverage": found / total, "epoch": epoch})
 
 
 def log_best_so_far(train_y, epoch=0):

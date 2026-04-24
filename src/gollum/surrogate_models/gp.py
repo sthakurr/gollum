@@ -175,6 +175,10 @@ class DeepGP(SurrogateModel, SingleTaskGP):
 
         self.finetuning_model = finetuning_model
         self.finetuning_model = self.finetuning_model.to(**tkwargs)
+        # Restore LLM weights to bfloat16 — float64 is only needed for the GP
+        # kernel and projector, not the language model itself.
+        if hasattr(self.finetuning_model, "llm") and hasattr(self.finetuning_model, "_llm_dtype"):
+            self.finetuning_model.llm = self.finetuning_model.llm.to(dtype=self.finetuning_model._llm_dtype)
         self.likelihood.noise_covar.register_constraint(
             "raw_noise", GreaterThan(noise_constraint)
         )

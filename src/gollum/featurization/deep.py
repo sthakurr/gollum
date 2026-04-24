@@ -84,6 +84,7 @@ class LLMFeaturizer(BaseNNFeaturizer):
     ):
         super().__init__(input_dim=input_dim, projection_dim=projection_dim)
         print(model_name, "for LLM")
+        self._uses_esmc = "esmc" in model_name.lower() or "evolutionaryscale/esmc" in model_name.lower()
         self.llm, self.tokenizer = get_model_and_tokenizer(model_name, "cuda")
         if trainable:
             target_modules = get_target_layers(
@@ -102,8 +103,13 @@ class LLMFeaturizer(BaseNNFeaturizer):
                     modules_to_save=modules_to_save,
                 ),
             )
-            # Gradient checkpointing trades ~30% compute for 4-8x less activation memory
-            self.llm.gradient_checkpointing_enable()
+            # Gradient checkpointing trades ~30% compute for 4-8x less activation memory.
+            # ESMC is not a HF PreTrainedModel so the call may not work — catch silently.
+            if hasattr(self.llm, "gradient_checkpointing_enable"):
+                try:
+                    self.llm.gradient_checkpointing_enable()
+                except (AttributeError, NotImplementedError):
+                    pass
             self.llm.print_trainable_parameters()
         else:
             self.llm.requires_grad_(False)
@@ -155,18 +161,30 @@ class LLMFeaturizer(BaseNNFeaturizer):
             attn_mask = x[start_idx:end_idx, ids_split:].long()
 
             if self.trainable:
-                outputs = self.llm(
-                    input_ids=input_ids, attention_mask=attn_mask
-                )
-
-            else:
-                self.llm.eval()
-                with torch.no_grad():
+                if self._uses_esmc:
+                    outputs = self.llm(
+                        sequence_tokens=input_ids,
+                        sequence_id=None,
+                    )
+                else:
                     outputs = self.llm(
                         input_ids=input_ids, attention_mask=attn_mask
                     )
 
-            last_hidden_state = outputs.last_hidden_state
+            else:
+                self.llm.eval()
+                with torch.no_grad():
+                    if self._uses_esmc:
+                        outputs = self.llm(
+                            sequence_tokens=input_ids,
+                            sequence_id=None,
+                        )
+                    else:
+                        outputs = self.llm(
+                            input_ids=input_ids, attention_mask=attn_mask
+                        )
+
+            last_hidden_state = outputs.embeddings if self._uses_esmc else outputs.last_hidden_state
 
             if self.pooling_method == "average":
                 pooled = average_pool(last_hidden_state, attn_mask)
